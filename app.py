@@ -353,7 +353,7 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
 
     return (
         alt.Chart(long_df)
-        .mark_line(point=alt.OverlayMarkDef(filled=True, size=48), strokeWidth=2)
+        .mark_line(point=alt.OverlayMarkDef(filled=True, size=52), strokeWidth=2.2)
         .encode(
             x=alt.X("spend_date:T", title="Date", axis=alt.Axis(grid=False)),
             y=alt.Y("amount:Q", title="Amount ($)", axis=alt.Axis(grid=False)),
@@ -364,6 +364,21 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
         .configure_view(fill="transparent", stroke="transparent")
         .configure_axis(domainColor="#9ca3af", tickColor="#9ca3af", labelColor="#111111", titleColor="#111111")
         .configure_legend(labelColor="#111111", titleColor="#111111")
+    )
+
+
+def total_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
+    return (
+        alt.Chart(df)
+        .mark_line(color="#374151", strokeWidth=2.4, point=alt.OverlayMarkDef(filled=True, size=56))
+        .encode(
+            x=alt.X("spend_date:T", title="Date", axis=alt.Axis(grid=False)),
+            y=alt.Y("total:Q", title="Total ($)", axis=alt.Axis(grid=False)),
+            tooltip=["spend_date:T", alt.Tooltip("total:Q", format=",.2f")],
+        )
+        .properties(height=280)
+        .configure_view(fill="transparent", stroke="transparent")
+        .configure_axis(domainColor="#9ca3af", tickColor="#9ca3af", labelColor="#111111", titleColor="#111111")
     )
 
 
@@ -393,10 +408,22 @@ def apply_style() -> None:
         }
         .stNumberInput input, .stDateInput input, .stTextInput input {
             color: #111111 !important;
-            background: transparent !important;
+            background: #ffffff !important;
             border: 1px solid #d1d5db !important;
             -webkit-text-fill-color: #111111 !important;
             opacity: 1 !important;
+            caret-color: #111111 !important;
+        }
+        [data-baseweb="input"] input {
+            color: #111111 !important;
+            -webkit-text-fill-color: #111111 !important;
+            background: #ffffff !important;
+            opacity: 1 !important;
+        }
+        .stDateInput div[data-baseweb="input"] input {
+            color: #111111 !important;
+            -webkit-text-fill-color: #111111 !important;
+            background: #ffffff !important;
         }
         input[type="date"]::-webkit-datetime-edit { color: #111111 !important; }
         input[type="date"]::-webkit-calendar-picker-indicator {
@@ -580,21 +607,10 @@ with quote_col:
 st.subheader("Category Trends")
 if not all_df.empty:
     trend_df = all_df.sort_values("spend_date").copy()
-    chart = category_timeseries_chart(trend_df)
-    st.altair_chart(chart, use_container_width=True)
+    category_chart = category_timeseries_chart(trend_df)
+    st.altair_chart(category_chart, use_container_width=True)
 
-    total_chart = (
-        alt.Chart(trend_df)
-        .mark_line(color="#4b5563", strokeWidth=2.2, point=alt.OverlayMarkDef(filled=True, size=42))
-        .encode(
-            x=alt.X("spend_date:T", title="Date", axis=alt.Axis(grid=False)),
-            y=alt.Y("total:Q", title="Total ($)", axis=alt.Axis(grid=False)),
-            tooltip=["spend_date:T", alt.Tooltip("total:Q", format=",.2f")],
-        )
-        .properties(height=280)
-        .configure_view(fill="transparent", stroke="transparent")
-        .configure_axis(domainColor="#9ca3af", tickColor="#9ca3af", labelColor="#111111", titleColor="#111111")
-    )
+    total_chart = total_timeseries_chart(trend_df)
     st.altair_chart(total_chart, use_container_width=True)
 else:
     st.info("No saved records yet.")
