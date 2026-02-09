@@ -353,9 +353,76 @@ def fetch_wikipedia_image(search_query: str) -> str | None:
         return None
 
 
-def product_image_url(brand: str, model: str, product_type: str) -> str:
+@st.cache_data(ttl=86400)
+def fetch_serpapi_image(search_query: str, serpapi_key: str) -> str | None:
+    try:
+        if not serpapi_key:
+            return None
+        resp = requests.get(
+            "https://serpapi.com/search.json",
+            params={
+                "engine": "google_images",
+                "q": search_query,
+                "api_key": serpapi_key,
+                "num": 1,
+            },
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        imgs = data.get("images_results") or []
+        if not imgs:
+            return None
+        return imgs[0].get("original") or imgs[0].get("thumbnail")
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=86400)
+def fetch_bing_image(search_query: str, bing_api_key: str) -> str | None:
+    try:
+        if not bing_api_key:
+            return None
+        resp = requests.get(
+            "https://api.bing.microsoft.com/v7.0/images/search",
+            headers={"Ocp-Apim-Subscription-Key": bing_api_key},
+            params={"q": search_query, "count": 1, "safeSearch": "Strict"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        values = data.get("value") or []
+        if not values:
+            return None
+        return values[0].get("contentUrl") or values[0].get("thumbnailUrl")
+    except Exception:
+        return None
+
+
+def product_image_url(
+    brand: str,
+    model: str,
+    product_type: str,
+    image_provider: str,
+    serpapi_key: str,
+    bing_api_key: str,
+) -> str:
     query = product_search_query(brand, model, product_type)
-    real_url = fetch_wikipedia_image(query)
+    real_url = None
+    if image_provider == "SerpAPI":
+        real_url = fetch_serpapi_image(query, serpapi_key)
+    elif image_provider == "Bing Image Search":
+        real_url = fetch_bing_image(query, bing_api_key)
+    elif image_provider == "Auto":
+        real_url = (
+            fetch_serpapi_image(query, serpapi_key)
+            or fetch_bing_image(query, bing_api_key)
+        )
+
+    if not real_url:
+        real_url = fetch_wikipedia_image(query)
     if real_url:
         return real_url
     # Fallback image when external image lookup fails.
@@ -631,6 +698,14 @@ with st.sidebar:
     st.subheader("AI Settings")
     openai_api_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
     model_name = st.text_input("Model", value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+    st.subheader("Image Settings")
+    image_provider = st.selectbox(
+        "Image Provider",
+        options=["Auto", "Wikipedia", "SerpAPI", "Bing Image Search"],
+        index=0,
+    )
+    serpapi_key = st.text_input("SERPAPI_KEY", type="password", value=os.getenv("SERPAPI_KEY", ""))
+    bing_api_key = st.text_input("BING_IMAGE_SEARCH_KEY", type="password", value=os.getenv("BING_IMAGE_SEARCH_KEY", ""))
 
 st.subheader("Date")
 selected_date = date_selector(date.today())
@@ -667,7 +742,12 @@ with right:
         st.write(f"Model Price: ${car['price']:,.2f}")
     with annual_img:
         st.markdown("<div class='image-box'>", unsafe_allow_html=True)
-        st.image(product_image_url(car["brand"], car["model"], "car"), use_container_width=True)
+        st.image(
+            product_image_url(
+                car["brand"], car["model"], "car", image_provider, serpapi_key, bing_api_key
+            ),
+            use_container_width=True,
+        )
         st.markdown("</div>", unsafe_allow_html=True)
 
     monthly_if_repeat = live_total * 30
@@ -690,8 +770,18 @@ with right:
         st.write(f"Quantity (max units): {iphone_qty}")
     with monthly_img:
         st.markdown("<div class='image-box'>", unsafe_allow_html=True)
-        st.image(product_image_url(macbook["brand"], macbook["model"], "macbook"), use_container_width=True)
-        st.image(product_image_url(iphone["brand"], iphone["model"], "iphone"), use_container_width=True)
+        st.image(
+            product_image_url(
+                macbook["brand"], macbook["model"], "macbook", image_provider, serpapi_key, bing_api_key
+            ),
+            use_container_width=True,
+        )
+        st.image(
+            product_image_url(
+                iphone["brand"], iphone["model"], "iphone", image_provider, serpapi_key, bing_api_key
+            ),
+            use_container_width=True,
+        )
         st.markdown("</div>", unsafe_allow_html=True)
 
 all_df = load_all_data()
@@ -767,4 +857,11 @@ month_map = get_month_map(year, month)
 render_calendar(year, month, month_map)
 
 with st.expander("Run"):
-    st.code("pip install -r requirements.txt\nstreamlit run app.py", language="bash")
+    st.code(
+        "pip install -r requirements.txt\n"
+        "export OPENAI_API_KEY='...'\n"
+        "export SERPAPI_KEY='...'\n"
+        "export BING_IMAGE_SEARCH_KEY='...'\n"
+        "streamlit run app.py",
+        language="bash",
+    )
