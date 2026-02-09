@@ -355,10 +355,10 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
         alt.Chart(long_df)
         .mark_line(point=alt.OverlayMarkDef(filled=True, size=52), strokeWidth=2.2)
         .encode(
-            x=alt.X("spend_date:T", title="Date", axis=alt.Axis(grid=False)),
+            x=alt.X("yearmonthdate(spend_date):T", title="Date", axis=alt.Axis(grid=False, format="%m-%d")),
             y=alt.Y("amount:Q", title="Amount ($)", axis=alt.Axis(grid=False)),
             color=alt.Color("category:N", scale=alt.Scale(domain=color_domain, range=color_range), title="Category"),
-            tooltip=["spend_date:T", "category:N", alt.Tooltip("amount:Q", format=",.2f")],
+            tooltip=[alt.Tooltip("yearmonthdate(spend_date):T", title="Date"), "category:N", alt.Tooltip("amount:Q", format=",.2f")],
         )
         .properties(height=320, background="#ffffff")
         .configure_view(fill="#ffffff", stroke="#e5e7eb")
@@ -376,9 +376,9 @@ def total_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
         alt.Chart(df)
         .mark_line(color="#111111", strokeWidth=2.6, point=alt.OverlayMarkDef(filled=True, size=48))
         .encode(
-            x=alt.X("spend_date:T", title="Date", axis=alt.Axis(grid=False)),
+            x=alt.X("yearmonthdate(spend_date):T", title="Date", axis=alt.Axis(grid=False, format="%m-%d")),
             y=alt.Y("cumulative_total:Q", title="Cumulative Total ($)", axis=alt.Axis(grid=False)),
-            tooltip=["spend_date:T", alt.Tooltip("cumulative_total:Q", format=",.2f")],
+            tooltip=[alt.Tooltip("yearmonthdate(spend_date):T", title="Date"), alt.Tooltip("cumulative_total:Q", format=",.2f")],
         )
         .properties(height=280, background="#ffffff")
         .configure_view(fill="#ffffff", stroke="#e5e7eb")
@@ -476,8 +476,25 @@ def apply_style() -> None:
             opacity: 0.9;
         }
         .stSelectbox div[data-baseweb="select"] > div {
-            background: transparent !important;
+            background: #ffffff !important;
             border: 1px solid #d1d5db !important;
+        }
+        div[data-baseweb="popover"] {
+            background: #ffffff !important;
+            color: #111111 !important;
+        }
+        ul[role="listbox"] {
+            background: #ffffff !important;
+            color: #111111 !important;
+            border: 1px solid #d1d5db !important;
+        }
+        li[role="option"] {
+            background: #ffffff !important;
+            color: #111111 !important;
+        }
+        li[role="option"][aria-selected="true"] {
+            background: #f3f4f6 !important;
+            color: #111111 !important;
         }
         .stButton > button,
         .stDownloadButton > button {
