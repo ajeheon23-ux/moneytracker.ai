@@ -111,10 +111,21 @@ def load_all_data() -> pd.DataFrame:
     conn.close()
     if df.empty:
         return df
-    df["spend_date"] = pd.to_datetime(df["spend_date"])
+    df["spend_date"] = pd.to_datetime(df["spend_date"], errors="coerce")
+    df = df.dropna(subset=["spend_date"]).copy()
     for col in ["food", "shopping", "leisure", "other", "total"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
     return df
+
+
+def ensure_datetime_spend_date(df: pd.DataFrame) -> pd.DataFrame:
+    """Defensive conversion for environments where dtype is object at runtime."""
+    if df.empty:
+        return df
+    out = df.copy()
+    out["spend_date"] = pd.to_datetime(out["spend_date"], errors="coerce")
+    out = out.dropna(subset=["spend_date"])
+    return out
 
 
 def get_month_map(year: int, month: int) -> dict:
@@ -166,6 +177,7 @@ class ComparisonStats:
 
 
 def calculate_comparison(df: pd.DataFrame, selected: date) -> ComparisonStats:
+    df = ensure_datetime_spend_date(df)
     if df.empty:
         return ComparisonStats(0.0, 0.0, 0.0, 0.0)
 
@@ -193,6 +205,9 @@ def annualized_from_today(today_total: float) -> float:
 
 
 def projected_month_year(df: pd.DataFrame, selected: date) -> tuple[float, float]:
+    df = ensure_datetime_spend_date(df)
+    if df.empty:
+        return 0.0, 0.0
     selected_ts = pd.Timestamp(selected)
     month_df = df[(df["spend_date"].dt.year == selected_ts.year) & (df["spend_date"].dt.month == selected_ts.month)]
     if month_df.empty:
