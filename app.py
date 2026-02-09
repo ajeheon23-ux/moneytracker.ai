@@ -2,17 +2,19 @@ import calendar
 import os
 import sqlite3
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
 DB_PATH = "spending_data.db"
+CATEGORY_ORDER = ["food", "shopping", "leisure", "other"]
 CATEGORY_CONFIG = {
-    "food": {"label": "Food", "color": "#2563eb"},
-    "shopping": {"label": "Shopping", "color": "#db2777"},
-    "leisure": {"label": "Leisure", "color": "#16a34a"},
-    "other": {"label": "Other", "color": "#ea580c"},
+    "food": {"label": "Food/Beverage", "color": "#111111"},
+    "shopping": {"label": "Shopping", "color": "#2f2f2f"},
+    "leisure": {"label": "Hobbies", "color": "#555555"},
+    "other": {"label": "Etc (Travel)", "color": "#7a7a7a"},
 }
 
 CAR_CATALOG = [
@@ -20,17 +22,29 @@ CAR_CATALOG = [
     {"brand": "Honda", "model": "Civic", "price": 27000},
     {"brand": "Mazda", "model": "Mazda3", "price": 28000},
     {"brand": "Hyundai", "model": "Elantra", "price": 25000},
-    {"brand": "Kia", "model": "K5", "price": 29000},
     {"brand": "Tesla", "model": "Model 3", "price": 39000},
     {"brand": "BMW", "model": "3 Series", "price": 47000},
     {"brand": "Mercedes-Benz", "model": "C-Class", "price": 51000},
-    {"brand": "Audi", "model": "A5", "price": 52000},
-    {"brand": "Porsche", "model": "Macan", "price": 64000},
-    {"brand": "Land Rover", "model": "Defender", "price": 69000},
-    {"brand": "Lexus", "model": "RX", "price": 50000},
 ]
 
-st.set_page_config(page_title="Spending Pattern AI", layout="wide")
+MACBOOK_CATALOG = [
+    {"brand": "Apple", "model": "MacBook Air 13 (M2)", "price": 999},
+    {"brand": "Apple", "model": "MacBook Air 15 (M3)", "price": 1299},
+    {"brand": "Apple", "model": "MacBook Pro 14 (M3)", "price": 1599},
+    {"brand": "Apple", "model": "MacBook Pro 14 (M4 Pro)", "price": 1999},
+    {"brand": "Apple", "model": "MacBook Pro 16 (M4 Pro)", "price": 2499},
+]
+
+IPHONE_CATALOG = [
+    {"brand": "Apple", "model": "iPhone SE", "price": 429},
+    {"brand": "Apple", "model": "iPhone 15", "price": 799},
+    {"brand": "Apple", "model": "iPhone 15 Plus", "price": 899},
+    {"brand": "Apple", "model": "iPhone 16", "price": 899},
+    {"brand": "Apple", "model": "iPhone 16 Pro", "price": 1099},
+    {"brand": "Apple", "model": "iPhone 16 Pro Max", "price": 1199},
+]
+
+st.set_page_config(page_title="Money Tracker AI", layout="wide")
 
 
 def init_db() -> None:
@@ -119,7 +133,6 @@ def load_all_data() -> pd.DataFrame:
 
 
 def ensure_datetime_spend_date(df: pd.DataFrame) -> pd.DataFrame:
-    """Defensive conversion for environments where dtype is object at runtime."""
     if df.empty:
         return df
     out = df.copy()
@@ -144,28 +157,16 @@ def get_month_map(year: int, month: int) -> dict:
     )
     rows = cur.fetchall()
     conn.close()
-    mapping = {}
+    month_data = {}
     for row in rows:
-        mapping[row[0]] = {
+        month_data[row[0]] = {
             "food": float(row[1] or 0),
             "shopping": float(row[2] or 0),
             "leisure": float(row[3] or 0),
             "other": float(row[4] or 0),
             "total": float(row[5] or 0),
         }
-    return mapping
-
-
-def avg_per_day(df: pd.DataFrame, start_date: pd.Timestamp | None = None) -> float:
-    if df.empty:
-        return 0.0
-    d = df
-    if start_date is not None:
-        d = d[d["spend_date"] >= start_date]
-    if d.empty:
-        return 0.0
-    days = max(1, d["spend_date"].nunique())
-    return float(d["total"].sum() / days)
+    return month_data
 
 
 @dataclass
@@ -200,57 +201,92 @@ def calculate_comparison(df: pd.DataFrame, selected: date) -> ComparisonStats:
     return ComparisonStats(current_total, prev_day_total, prev_week_avg, prev_month_avg)
 
 
-def annualized_from_today(today_total: float) -> float:
-    return today_total * 365
-
-
 def projected_month_year(df: pd.DataFrame, selected: date) -> tuple[float, float]:
     df = ensure_datetime_spend_date(df)
     if df.empty:
         return 0.0, 0.0
     selected_ts = pd.Timestamp(selected)
     month_df = df[(df["spend_date"].dt.year == selected_ts.year) & (df["spend_date"].dt.month == selected_ts.month)]
-    if month_df.empty:
-        daily_avg = avg_per_day(df)
-    else:
-        daily_avg = float(month_df["total"].mean())
-    projected_month = daily_avg * 30
-    projected_year = daily_avg * 365
-    return projected_month, projected_year
+    daily_avg = float(month_df["total"].mean()) if not month_df.empty else 0.0
+    return daily_avg * 30, daily_avg * 365
+
+
+def annualized_from_today(today_total: float) -> float:
+    return today_total * 365
+
+
+def dominant_category(latest_row: dict) -> tuple[str, float]:
+    total = float(latest_row.get("total", 0.0))
+    if total <= 0:
+        return "food", 0.0
+    category_values = {k: float(latest_row.get(k, 0.0)) for k in CATEGORY_ORDER}
+    top_cat = max(category_values, key=category_values.get)
+    ratio = category_values[top_cat] / total if total else 0.0
+    return top_cat, ratio
 
 
 def determine_feedback(latest_row: dict, projected_year: float) -> str:
-    total = latest_row.get("total", 0.0)
+    total = float(latest_row.get("total", 0.0))
     if total <= 0:
-        return "No spending entered for the selected day. Add data to receive targeted feedback."
+        return "No spending entered for the selected day. Add values to get actionable feedback."
 
-    category_values = {k: float(latest_row.get(k, 0.0)) for k in CATEGORY_CONFIG.keys()}
-    top_cat = max(category_values, key=category_values.get)
-    top_value = category_values[top_cat]
-    ratio = (top_value / total) if total else 0
+    top_cat, ratio = dominant_category(latest_row)
+    label = CATEGORY_CONFIG[top_cat]["label"]
 
     if ratio >= 0.5 or projected_year >= 50000:
         return (
-            f"Strong feedback: {CATEGORY_CONFIG[top_cat]['label']} is dominating your daily spend profile. "
-            "At this pace, your cash burn is structurally too high. "
-            "Freeze non-essential purchases for 7 days and cap this category immediately."
+            f"Strong feedback: {label} is taking too much of your daily budget. "
+            "Your current pace is not sustainable. Set a strict hard cap immediately and pause non-essential spending for the next 7 days."
         )
-
     if ratio >= 0.35 or projected_year >= 30000:
         return (
-            f"Warning: {CATEGORY_CONFIG[top_cat]['label']} is above a healthy range. "
-            "Apply a fixed daily cap and delay non-urgent purchases by 24 hours."
+            f"Warning: {label} is above your healthy spending range. "
+            "Apply a daily cap and enforce a 24-hour delay rule before any optional purchase."
         )
+    return "Your spending distribution is stable. Keep consistent daily caps and continue tracking."
 
-    return "Your spending mix is currently balanced. Keep tracking and maintain category caps."
 
-
-def find_car_for_budget(amount: float) -> dict:
-    sorted_cars = sorted(CAR_CATALOG, key=lambda x: x["price"])
-    affordable = [c for c in sorted_cars if c["price"] <= amount]
+def pick_best_item(catalog: list[dict], budget: float) -> dict:
+    sorted_items = sorted(catalog, key=lambda x: x["price"])
+    affordable = [item for item in sorted_items if item["price"] <= budget]
     if affordable:
         return affordable[-1]
-    return sorted_cars[0]
+    return sorted_items[0]
+
+
+def get_rich_quote(openai_api_key: str, model_name: str, today_total: float, projected_year: float, feedback: str):
+    if not openai_api_key:
+        return None, "Enter OpenAI API key to generate a rich-mindset quote."
+    try:
+        from openai import OpenAI
+
+        prompt = f"""
+Create one strong money-discipline quote in English.
+Context:
+- Today's spend: ${today_total:,.2f}
+- Projected yearly spend: ${projected_year:,.2f}
+- Feedback: {feedback}
+
+Rules:
+- Max 24 words
+- No emojis
+- Tone: direct, disciplined, premium
+- Output one line only
+""".strip()
+
+        client = OpenAI(api_key=openai_api_key)
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You write concise high-impact money quotes."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+        )
+        text = (response.choices[0].message.content or "").strip().replace("\n", " ")
+        return text, None
+    except Exception as e:
+        return None, f"OpenAI request failed: {e}"
 
 
 def render_calendar(year: int, month: int, month_map: dict) -> None:
@@ -269,169 +305,234 @@ def render_calendar(year: int, month: int, month_map: dict) -> None:
             if day_num == 0:
                 html.append("<td></td>")
                 continue
-
             key = f"{year:04d}-{month:02d}-{day_num:02d}"
             rec = month_map.get(key)
             if rec:
                 bars = []
-                for cat in ["food", "shopping", "leisure", "other"]:
+                for cat in CATEGORY_ORDER:
                     value = rec.get(cat, 0.0)
                     if value > 0:
                         bars.append(
-                            f"<div class='bar' style='background:{CATEGORY_CONFIG[cat]['color']}'>{CATEGORY_CONFIG[cat]['label']} ${value:,.0f}</div>"
+                            f"<div class='bar' style='background:{CATEGORY_CONFIG[cat]['color']}'>{CATEGORY_CONFIG[cat]['label']}: ${value:,.0f}</div>"
                         )
-                bars_html = "".join(bars) if bars else ""
+                bars_html = "".join(bars)
                 html.append(
-                    f"<td><div class='day'>{day_num}</div>{bars_html}<div class='total'>Total ${rec.get('total', 0):,.0f}</div></td>"
+                    f"<td><div class='day'>{day_num}</div>{bars_html}<div class='total'>Total: ${rec.get('total', 0):,.0f}</div></td>"
                 )
             else:
                 html.append(f"<td><div class='day'>{day_num}</div></td>")
         html.append("</tr>")
-
     html.append("</tbody></table></div>")
     st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
+    if df.empty:
+        return alt.Chart(pd.DataFrame({"spend_date": [], "category": [], "amount": []}))
+
+    long_df = df[["spend_date", "food", "shopping", "leisure", "other"]].melt(
+        id_vars=["spend_date"],
+        var_name="category",
+        value_name="amount",
+    )
+    long_df["category"] = long_df["category"].map(lambda x: CATEGORY_CONFIG[x]["label"])
+
+    color_domain = [CATEGORY_CONFIG[c]["label"] for c in CATEGORY_ORDER]
+    color_range = [CATEGORY_CONFIG[c]["color"] for c in CATEGORY_ORDER]
+
+    return (
+        alt.Chart(long_df)
+        .mark_line(strokeWidth=2)
+        .encode(
+            x=alt.X("spend_date:T", title="Date"),
+            y=alt.Y("amount:Q", title="Amount ($)"),
+            color=alt.Color("category:N", scale=alt.Scale(domain=color_domain, range=color_range), title="Category"),
+            tooltip=["spend_date:T", "category:N", alt.Tooltip("amount:Q", format=",.2f")],
+        )
+        .properties(height=320)
+    )
 
 
 def apply_style() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&display=swap');
-
         .stApp {
-            background:
-                radial-gradient(1000px 500px at 0% -20%, #e2e8f0 0%, transparent 60%),
-                radial-gradient(1000px 500px at 100% 0%, #f1f5f9 0%, transparent 65%),
-                #f8fafc;
-            color: #0f172a;
-            font-family: 'Manrope', sans-serif;
+            background: #ffffff;
+            color: #111111;
+            font-family: Georgia, "Times New Roman", serif;
         }
-
-        h1, h2, h3 {
-            font-family: 'Libre Baskerville', serif;
-            letter-spacing: -0.02em;
+        html, body, [class*="css"] {
+            font-family: Georgia, "Times New Roman", serif;
+            color: #111111;
         }
-
         .hero {
-            border: 1px solid #cbd5e1;
-            background: rgba(255,255,255,0.88);
-            border-radius: 18px;
+            border: 1px solid #111111;
+            background: #ffffff;
             padding: 20px;
-            margin-bottom: 14px;
+            margin-bottom: 16px;
         }
-
         .hero-title {
-            font-size: 1.7rem;
+            font-size: 1.6rem;
             font-weight: 700;
             margin-bottom: 6px;
         }
-
         .hero-sub {
-            color: #334155;
             font-size: 0.95rem;
+            color: #222222;
         }
-
         .calendar-wrap table {width:100%; border-collapse:collapse; table-layout:fixed;}
-        .calendar-wrap th {border:1px solid #cbd5e1; background:#eef2ff; padding:7px; font-size:12px;}
-        .calendar-wrap td {border:1px solid #cbd5e1; height:116px; vertical-align:top; padding:6px; background:#ffffffd6;}
+        .calendar-wrap th {border:1px solid #111111; background:#f7f7f7; padding:7px; font-size:12px;}
+        .calendar-wrap td {border:1px solid #111111; height:130px; vertical-align:top; padding:6px; background:#ffffff;}
         .day {font-weight:700; font-size:12px; margin-bottom:5px;}
-        .bar {padding:2px 6px; border-radius:999px; color:#fff; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;}
-        .total {font-size:11px; color:#0f172a; margin-top:4px; font-weight:600;}
-
-        .legend {
-            display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 14px 0;
-        }
-        .legend-item {
-            padding:4px 8px; border-radius:999px; color:#fff; font-size:12px; font-weight:600;
-        }
+        .bar {padding:2px 6px; border-radius:3px; color:#ffffff; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;}
+        .total {font-size:11px; color:#111111; margin-top:4px; font-weight:700;}
+        .legend {display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 14px 0;}
+        .legend-item {padding:3px 8px; border-radius:3px; color:#ffffff; font-size:12px; font-weight:600;}
+        .section-box {border:1px solid #111111; padding:14px; background:#ffffff;}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
+def init_state() -> None:
+    if "rich_quote" not in st.session_state:
+        st.session_state.rich_quote = ""
+
+
 init_db()
+init_state()
 apply_style()
 
 st.markdown(
     """
     <div class='hero'>
-      <div class='hero-title'>Spending Pattern AI</div>
-      <div class='hero-sub'>Track daily expenses, detect risk patterns, and receive clear savings direction.</div>
+      <div class='hero-title'>Money Tracker AI</div>
+      <div class='hero-sub'>Record spending, analyze patterns, project outcomes, and enforce disciplined budgeting.</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
+with st.sidebar:
+    st.subheader("AI Settings")
+    openai_api_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
+    model_name = st.text_input("Model", value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+
 selected_date = st.date_input("Date", value=date.today(), max_value=date.today())
 selected_iso = selected_date.isoformat()
-existing = get_spending_by_date(selected_iso) or {"food": 0.0, "shopping": 0.0, "leisure": 0.0, "other": 0.0, "total": 0.0}
+existing = get_spending_by_date(selected_iso) or {"food": 0.0, "shopping": 0.0, "leisure": 0.0, "other": 0.0}
 
-form_col, summary_col = st.columns([1.1, 1], gap="large")
+left, right = st.columns([1.15, 1], gap="large")
 
-with form_col:
+with left:
     st.subheader("Daily Inputs")
-    food = st.number_input("Food", min_value=0.0, step=1.0, value=float(existing.get("food", 0.0)))
-    shopping = st.number_input("Shopping", min_value=0.0, step=1.0, value=float(existing.get("shopping", 0.0)))
-    leisure = st.number_input("Leisure", min_value=0.0, step=1.0, value=float(existing.get("leisure", 0.0)))
-    other = st.number_input("Other", min_value=0.0, step=1.0, value=float(existing.get("other", 0.0)))
+    food = st.number_input("Food/Beverage ($)", min_value=0.0, step=1.0, format="%.2f", value=float(existing.get("food", 0.0)))
+    shopping = st.number_input("Shopping ($)", min_value=0.0, step=1.0, format="%.2f", value=float(existing.get("shopping", 0.0)))
+    hobbies = st.number_input("Hobbies ($)", min_value=0.0, step=1.0, format="%.2f", value=float(existing.get("leisure", 0.0)))
+    other = st.number_input("Etc (Travel) ($)", min_value=0.0, step=1.0, format="%.2f", value=float(existing.get("other", 0.0)))
 
-    live_total = food + shopping + leisure + other
-    st.metric("Daily Total", f"${live_total:,.0f}")
+    live_total = float(food + shopping + hobbies + other)
+    st.metric("Daily Total", f"${live_total:,.2f}")
 
     if st.button("Save Expense", type="primary"):
-        upsert_spending(selected_iso, float(food), float(shopping), float(leisure), float(other))
-        st.success(f"Saved for {selected_iso}")
+        upsert_spending(selected_iso, float(food), float(shopping), float(hobbies), float(other))
+        st.success(f"Saved spending data for {selected_iso}.")
 
-with summary_col:
+with right:
     st.subheader("Annualized Perspective")
     annual_if_repeat = annualized_from_today(live_total)
-    st.metric("If Today Repeats For 1 Year", f"${annual_if_repeat:,.0f}")
+    st.metric("If Today Repeats for 365 Days", f"${annual_if_repeat:,.2f}")
 
-    car = find_car_for_budget(annual_if_repeat)
-    st.write("Reference car at this annualized spend:")
+    car = pick_best_item(CAR_CATALOG, annual_if_repeat)
+    st.markdown("<div class='section-box'>", unsafe_allow_html=True)
+    st.write("Reference car at this annualized burn rate")
     st.write(f"Brand: {car['brand']}")
     st.write(f"Model: {car['model']}")
-    st.write(f"Price: ${car['price']:,.0f}")
+    st.write(f"Price: ${car['price']:,.2f}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    monthly_if_repeat = live_total * 30
+    macbook = pick_best_item(MACBOOK_CATALOG, monthly_if_repeat)
+    iphone = pick_best_item(IPHONE_CATALOG, monthly_if_repeat)
+
+    st.subheader("Monthly Perspective")
+    st.metric("If Today Repeats for 30 Days", f"${monthly_if_repeat:,.2f}")
+    st.markdown("<div class='section-box'>", unsafe_allow_html=True)
+    st.write("Possible Apple purchases with this monthly amount")
+    st.write(f"MacBook: {macbook['model']} (${macbook['price']:,.2f})")
+    st.write(f"iPhone: {iphone['model']} (${iphone['price']:,.2f})")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 all_df = load_all_data()
 comparison = calculate_comparison(all_df, selected_date)
 projected_month, projected_year = projected_month_year(all_df, selected_date)
 
-st.subheader("Comparisons")
+st.subheader("Comparative Insights")
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Selected Day", f"${comparison.current_total:,.0f}")
-c2.metric("Previous Day", f"${comparison.prev_day_total:,.0f}")
-c3.metric("Prev 7-Day Avg", f"${comparison.prev_week_avg:,.0f}")
-c4.metric("Prev 30-Day Avg", f"${comparison.prev_month_avg:,.0f}")
+c1.metric("Selected Day", f"${comparison.current_total:,.2f}")
+c2.metric("Previous Day", f"${comparison.prev_day_total:,.2f}")
+c3.metric("Previous 7-Day Average", f"${comparison.prev_week_avg:,.2f}")
+c4.metric("Previous 30-Day Average", f"${comparison.prev_month_avg:,.2f}")
 
 p1, p2 = st.columns(2)
-p1.metric("Projected Monthly Spend", f"${projected_month:,.0f}")
-p2.metric("Projected Yearly Spend", f"${projected_year:,.0f}")
+p1.metric("Projected Monthly Spend", f"${projected_month:,.2f}")
+p2.metric("Projected Yearly Spend", f"${projected_year:,.2f}")
 
-latest_row = {"food": food, "shopping": shopping, "leisure": leisure, "other": other, "total": live_total}
+latest_row = {"food": food, "shopping": shopping, "leisure": hobbies, "other": other, "total": live_total}
 feedback = determine_feedback(latest_row, projected_year)
+
 st.subheader("Feedback")
 st.write(feedback)
 
+quote_col, btn_col = st.columns([4, 1])
+with btn_col:
+    generate_quote = st.button("Generate Rich Quote")
+
+if generate_quote:
+    quote, err = get_rich_quote(openai_api_key, model_name, live_total, projected_year, feedback)
+    if err:
+        st.error(err)
+    else:
+        st.session_state.rich_quote = quote
+
+with quote_col:
+    if st.session_state.rich_quote:
+        st.write(st.session_state.rich_quote)
+    else:
+        st.caption("Generate a rich-mindset quote based on your spending profile.")
+
 st.subheader("Category Trends")
 if not all_df.empty:
-    trend_df = all_df.copy().sort_values("spend_date")
-    trend_df = trend_df.set_index("spend_date")[["food", "shopping", "leisure", "other", "total"]]
-    st.area_chart(trend_df[["food", "shopping", "leisure", "other"]])
-    st.line_chart(trend_df[["total"]])
+    trend_df = all_df.sort_values("spend_date").copy()
+    chart = category_timeseries_chart(trend_df)
+    st.altair_chart(chart, use_container_width=True)
+
+    total_chart = (
+        alt.Chart(trend_df)
+        .mark_line(color="#111111", strokeWidth=2.5)
+        .encode(
+            x=alt.X("spend_date:T", title="Date"),
+            y=alt.Y("total:Q", title="Total ($)"),
+            tooltip=["spend_date:T", alt.Tooltip("total:Q", format=",.2f")],
+        )
+        .properties(height=280)
+    )
+    st.altair_chart(total_chart, use_container_width=True)
 else:
     st.info("No saved records yet.")
 
 st.subheader("Monthly Calendar")
-mcol1, mcol2 = st.columns(2)
-with mcol1:
+y_col, m_col = st.columns(2)
+with y_col:
     year = st.selectbox("Year", options=list(range(date.today().year - 2, date.today().year + 2)), index=2)
-with mcol2:
+with m_col:
     month = st.selectbox("Month", options=list(range(1, 13)), index=date.today().month - 1)
 
 legend_html = ["<div class='legend'>"]
-for key, cfg in CATEGORY_CONFIG.items():
+for cat in CATEGORY_ORDER:
+    cfg = CATEGORY_CONFIG[cat]
     legend_html.append(f"<span class='legend-item' style='background:{cfg['color']}'>{cfg['label']}</span>")
 legend_html.append("</div>")
 st.markdown("".join(legend_html), unsafe_allow_html=True)
