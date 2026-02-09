@@ -230,7 +230,8 @@ def calculate_range_allowance(
     spent_sum = sum(float((month_map.get(d) or {}).get("total", 0.0)) for d in selected_dates)
     empty_dates = [d for d in selected_dates if d not in month_map]
 
-    denominator = range_days - 1
+    month_days = calendar.monthrange(year, month)[1]
+    denominator = month_days - range_days
     if denominator <= 0:
         allowance_raw = 0.0
     else:
@@ -241,6 +242,7 @@ def calculate_range_allowance(
         "start_day": start_day,
         "end_day": end_day,
         "selected_dates": selected_dates,
+        "month_days": month_days,
         "spent_sum": spent_sum,
         "range_days": range_days,
         "denominator": denominator,
@@ -847,7 +849,8 @@ render_calendar(
 
 st.caption(
     f"Formula: (Target ${monthly_target:,.2f} - Spent in selected range ${allowance_result['spent_sum']:,.2f}) "
-    f"/ (Selected days {allowance_result['range_days']} - 1) = ${allowance_result['allowance_capped']:,.2f}"
+    f"/ (Month days {allowance_result['month_days']} - Selected days {allowance_result['range_days']}) "
+    f"= ${allowance_result['allowance_capped']:,.2f}"
 )
 st.write(f"Selected range: {allowance_result['start_day']} to {allowance_result['end_day']}")
 st.write(f"Spent in selected range: ${allowance_result['spent_sum']:,.2f}")
@@ -856,7 +859,7 @@ st.write(f"Empty days in selected range: {len(allowance_result['empty_dates'])}"
 if allowance_result["allowance_raw"] < 0:
     st.warning("Selected range has already exceeded the monthly target. Allowance for empty cells is capped at $0.00.")
 elif allowance_result["denominator"] <= 0:
-    st.info("Select at least 2 days to calculate per-day allowance.")
+    st.info("No remaining days in this month after the selected range. Expand or reduce the selected range.")
 
 with st.expander("Run"):
     st.code(
