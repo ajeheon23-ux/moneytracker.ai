@@ -11,10 +11,10 @@ import streamlit as st
 DB_PATH = "spending_data.db"
 CATEGORY_ORDER = ["food", "shopping", "leisure", "other"]
 CATEGORY_CONFIG = {
-    "food": {"label": "Food/Beverage", "color": "#d1d5db"},
+    "food": {"label": "Food/Beverage", "color": "#f3f4f6"},
     "shopping": {"label": "Shopping", "color": "#e5e7eb"},
-    "leisure": {"label": "Hobbies", "color": "#cbd5e1"},
-    "other": {"label": "Etc (Travel)", "color": "#f1f5f9"},
+    "leisure": {"label": "Hobbies", "color": "#d1d5db"},
+    "other": {"label": "Etc (Travel)", "color": "#cbd5e1"},
 }
 
 CAR_CATALOG = [
@@ -324,7 +324,7 @@ def render_calendar(year: int, month: int, month_map: dict) -> None:
                     value = rec.get(cat, 0.0)
                     if value > 0:
                         bars.append(
-                            f"<div class='bar' style='border-color:{CATEGORY_CONFIG[cat]['color']}'>{CATEGORY_CONFIG[cat]['label']}: ${value:,.0f}</div>"
+                            f"<div class='bar' style='border-color:#d1d5db; background:{CATEGORY_CONFIG[cat]['color']}'>{CATEGORY_CONFIG[cat]['label']}: ${value:,.0f}</div>"
                         )
                 bars_html = "".join(bars)
                 html.append(
@@ -348,18 +348,22 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
     )
     long_df["category"] = long_df["category"].map(lambda x: CATEGORY_CONFIG[x]["label"])
 
+    color_domain = [CATEGORY_CONFIG[c]["label"] for c in CATEGORY_ORDER]
+    color_range = ["#111111", "#4b5563", "#6b7280", "#9ca3af"]
+
     return (
         alt.Chart(long_df)
-        .mark_line(strokeWidth=2, color="#9ca3af", strokeDash=[6, 4])
+        .mark_line(point=alt.OverlayMarkDef(filled=True, size=48), strokeWidth=2)
         .encode(
-            x=alt.X("spend_date:T", title="Date"),
-            y=alt.Y("amount:Q", title="Amount ($)"),
-            strokeDash=alt.StrokeDash("category:N", title="Category"),
-            detail="category:N",
+            x=alt.X("spend_date:T", title="Date", axis=alt.Axis(grid=False)),
+            y=alt.Y("amount:Q", title="Amount ($)", axis=alt.Axis(grid=False)),
+            color=alt.Color("category:N", scale=alt.Scale(domain=color_domain, range=color_range), title="Category"),
             tooltip=["spend_date:T", "category:N", alt.Tooltip("amount:Q", format=",.2f")],
         )
         .properties(height=320)
-        .configure_view(fill="#ffffff", stroke="#e5e7eb")
+        .configure_view(fill="transparent", stroke="transparent")
+        .configure_axis(domainColor="#9ca3af", tickColor="#9ca3af", labelColor="#111111", titleColor="#111111")
+        .configure_legend(labelColor="#111111", titleColor="#111111")
     )
 
 
@@ -391,6 +395,13 @@ def apply_style() -> None:
             color: #111111 !important;
             background: transparent !important;
             border: 1px solid #d1d5db !important;
+            -webkit-text-fill-color: #111111 !important;
+            opacity: 1 !important;
+        }
+        input[type="date"]::-webkit-datetime-edit { color: #111111 !important; }
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: grayscale(1) brightness(0.3);
+            opacity: 0.9;
         }
         .stSelectbox div[data-baseweb="select"] > div {
             background: transparent !important;
@@ -434,7 +445,7 @@ def apply_style() -> None:
         .calendar-wrap th {border:1px solid #e5e7eb; background:#fafafa; padding:7px; font-size:12px;}
         .calendar-wrap td {border:1px solid #e5e7eb; height:130px; vertical-align:top; padding:6px; background:#ffffff;}
         .day {font-weight:700; font-size:12px; margin-bottom:5px;}
-        .bar {padding:2px 6px; border-radius:3px; color:#111111; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border:1px solid #d1d5db; background:transparent !important;}
+        .bar {padding:2px 6px; border-radius:3px; color:#111111; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border:1px solid #d1d5db; background:transparent;}
         .total {font-size:11px; color:#111111; margin-top:4px; font-weight:700;}
         .legend {display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 14px 0;}
         .legend-item {padding:3px 8px; border-radius:3px; color:#111111; font-size:12px; font-weight:600; border:1px solid #d1d5db; background:transparent !important;}
@@ -574,14 +585,15 @@ if not all_df.empty:
 
     total_chart = (
         alt.Chart(trend_df)
-        .mark_line(color="#9ca3af", strokeWidth=2.5, strokeDash=[6, 4])
+        .mark_line(color="#4b5563", strokeWidth=2.2, point=alt.OverlayMarkDef(filled=True, size=42))
         .encode(
-            x=alt.X("spend_date:T", title="Date"),
-            y=alt.Y("total:Q", title="Total ($)"),
+            x=alt.X("spend_date:T", title="Date", axis=alt.Axis(grid=False)),
+            y=alt.Y("total:Q", title="Total ($)", axis=alt.Axis(grid=False)),
             tooltip=["spend_date:T", alt.Tooltip("total:Q", format=",.2f")],
         )
         .properties(height=280)
-        .configure_view(fill="#ffffff", stroke="#e5e7eb")
+        .configure_view(fill="transparent", stroke="transparent")
+        .configure_axis(domainColor="#9ca3af", tickColor="#9ca3af", labelColor="#111111", titleColor="#111111")
     )
     st.altair_chart(total_chart, use_container_width=True)
 else:
