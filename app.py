@@ -413,19 +413,29 @@ def apply_style() -> None:
             -webkit-text-fill-color: #111111 !important;
             opacity: 1 !important;
             caret-color: #111111 !important;
+            color-scheme: light !important;
         }
         [data-baseweb="input"] input {
             color: #111111 !important;
             -webkit-text-fill-color: #111111 !important;
             background: #ffffff !important;
             opacity: 1 !important;
+            color-scheme: light !important;
         }
         .stDateInput div[data-baseweb="input"] input {
             color: #111111 !important;
             -webkit-text-fill-color: #111111 !important;
             background: #ffffff !important;
+            color-scheme: light !important;
         }
-        input[type="date"]::-webkit-datetime-edit { color: #111111 !important; }
+        input[type="date"]::-webkit-datetime-edit,
+        input[type="date"]::-webkit-datetime-edit-year-field,
+        input[type="date"]::-webkit-datetime-edit-month-field,
+        input[type="date"]::-webkit-datetime-edit-day-field {
+            color: #111111 !important;
+            -webkit-text-fill-color: #111111 !important;
+            background: #ffffff !important;
+        }
         input[type="date"]::-webkit-calendar-picker-indicator {
             filter: grayscale(1) brightness(0.3);
             opacity: 0.9;
