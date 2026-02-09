@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 import altair as alt
 import pandas as pd
+import requests
 import streamlit as st
 
 DB_PATH = "spending_data.db"
@@ -289,15 +290,71 @@ Rules:
         return None, f"OpenAI request failed: {e}"
 
 
-def product_image_url(brand: str, model: str, product_type: str) -> str:
-    safe_model = model.replace(" ", "+")
-    if product_type == "car":
-        return f"https://dummyimage.com/300x180/ffffff/111111.png&text={brand}+{safe_model}"
+def product_search_query(brand: str, model: str, product_type: str) -> str:
     if product_type == "macbook":
-        return f"https://dummyimage.com/300x180/ffffff/111111.png&text={safe_model}"
+        if "Air" in model:
+            return "Apple MacBook Air"
+        return "Apple MacBook Pro"
     if product_type == "iphone":
-        return f"https://dummyimage.com/300x180/ffffff/111111.png&text={safe_model}"
-    return "https://dummyimage.com/300x180/ffffff/111111.png&text=Product"
+        model_base = model.split("(")[0].strip()
+        return f"Apple {model_base}"
+    return f"{brand} {model}"
+
+
+@st.cache_data(ttl=86400)
+def fetch_wikipedia_image(search_query: str) -> str | None:
+    """Find product photo from Wikipedia and return thumbnail URL."""
+    try:
+        search_resp = requests.get(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "list": "search",
+                "srsearch": search_query,
+                "srlimit": 1,
+                "format": "json",
+            },
+            timeout=8,
+        )
+        if search_resp.status_code != 200:
+            return None
+        search_data = search_resp.json()
+        hits = ((search_data.get("query") or {}).get("search") or [])
+        if not hits:
+            return None
+        pageid = hits[0].get("pageid")
+        if not pageid:
+            return None
+
+        image_resp = requests.get(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "prop": "pageimages",
+                "pageids": pageid,
+                "pithumbsize": 900,
+                "format": "json",
+            },
+            timeout=8,
+        )
+        if image_resp.status_code != 200:
+            return None
+        image_data = image_resp.json()
+        page = ((image_data.get("query") or {}).get("pages") or {}).get(str(pageid), {})
+        thumb = (page.get("thumbnail") or {}).get("source")
+        return thumb
+    except Exception:
+        return None
+
+
+def product_image_url(brand: str, model: str, product_type: str) -> str:
+    query = product_search_query(brand, model, product_type)
+    real_url = fetch_wikipedia_image(query)
+    if real_url:
+        return real_url
+    # Fallback image when external image lookup fails.
+    safe_model = model.replace(" ", "+")
+    return f"https://dummyimage.com/300x180/ffffff/111111.png&text={brand}+{safe_model}"
 
 
 def render_calendar(year: int, month: int, month_map: dict) -> None:
