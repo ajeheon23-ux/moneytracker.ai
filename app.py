@@ -11,10 +11,10 @@ import streamlit as st
 DB_PATH = "spending_data.db"
 CATEGORY_ORDER = ["food", "shopping", "leisure", "other"]
 CATEGORY_CONFIG = {
-    "food": {"label": "Food/Beverage", "color": "#4b5563"},
-    "shopping": {"label": "Shopping", "color": "#6b7280"},
-    "leisure": {"label": "Hobbies", "color": "#9ca3af"},
-    "other": {"label": "Etc (Travel)", "color": "#374151"},
+    "food": {"label": "Food/Beverage", "color": "#d1d5db"},
+    "shopping": {"label": "Shopping", "color": "#e5e7eb"},
+    "leisure": {"label": "Hobbies", "color": "#cbd5e1"},
+    "other": {"label": "Etc (Travel)", "color": "#f1f5f9"},
 }
 
 CAR_CATALOG = [
@@ -350,7 +350,7 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
 
     return (
         alt.Chart(long_df)
-        .mark_line(strokeWidth=2, color="#4b5563", strokeDash=[6, 4])
+        .mark_line(strokeWidth=2, color="#9ca3af", strokeDash=[6, 4])
         .encode(
             x=alt.X("spend_date:T", title="Date"),
             y=alt.Y("amount:Q", title="Amount ($)"),
@@ -359,7 +359,7 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
             tooltip=["spend_date:T", "category:N", alt.Tooltip("amount:Q", format=",.2f")],
         )
         .properties(height=320)
-        .configure_view(fill="#ffffff", stroke="#111111")
+        .configure_view(fill="#ffffff", stroke="#e5e7eb")
     )
 
 
@@ -390,31 +390,31 @@ def apply_style() -> None:
         .stNumberInput input, .stDateInput input, .stTextInput input {
             color: #111111 !important;
             background: transparent !important;
-            border: 1px solid #111111 !important;
+            border: 1px solid #d1d5db !important;
         }
         .stSelectbox div[data-baseweb="select"] > div {
             background: transparent !important;
-            border: 1px solid #111111 !important;
+            border: 1px solid #d1d5db !important;
         }
         .stButton > button,
         .stDownloadButton > button {
             color: #111111 !important;
             background: #f3f4f6 !important;
-            border: 1px solid #111111 !important;
+            border: 1px solid #d1d5db !important;
             border-radius: 4px !important;
         }
         .stButton > button:hover,
         .stDownloadButton > button:hover {
             background: #e5e7eb !important;
-            border-color: #111111 !important;
+            border-color: #d1d5db !important;
         }
         .stButton > button[kind="primary"] {
             background: #e5e7eb !important;
             color: #111111 !important;
-            border: 1px solid #111111 !important;
+            border: 1px solid #d1d5db !important;
         }
         .hero {
-            border: 1px solid #111111;
+            border: 1px solid #e5e7eb;
             background: #ffffff;
             padding: 20px;
             margin-bottom: 16px;
@@ -431,14 +431,14 @@ def apply_style() -> None:
             color: #222222;
         }
         .calendar-wrap table {width:100%; border-collapse:collapse; table-layout:fixed;}
-        .calendar-wrap th {border:1px solid #111111; background:#f7f7f7; padding:7px; font-size:12px;}
-        .calendar-wrap td {border:1px solid #111111; height:130px; vertical-align:top; padding:6px; background:#ffffff;}
+        .calendar-wrap th {border:1px solid #e5e7eb; background:#fafafa; padding:7px; font-size:12px;}
+        .calendar-wrap td {border:1px solid #e5e7eb; height:130px; vertical-align:top; padding:6px; background:#ffffff;}
         .day {font-weight:700; font-size:12px; margin-bottom:5px;}
-        .bar {padding:2px 6px; border-radius:3px; color:#111111; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border:1px solid #111111; background:transparent !important;}
+        .bar {padding:2px 6px; border-radius:3px; color:#111111; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border:1px solid #d1d5db; background:transparent !important;}
         .total {font-size:11px; color:#111111; margin-top:4px; font-weight:700;}
         .legend {display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 14px 0;}
-        .legend-item {padding:3px 8px; border-radius:3px; color:#111111; font-size:12px; font-weight:600; border:1px solid #111111; background:transparent !important;}
-        .image-box {border:1px solid #111111; padding:6px; background:#ffffff;}
+        .legend-item {padding:3px 8px; border-radius:3px; color:#111111; font-size:12px; font-weight:600; border:1px solid #d1d5db; background:transparent !important;}
+        .image-box {border:1px solid #e5e7eb; padding:6px; background:#ffffff;}
         </style>
         """,
         unsafe_allow_html=True,
@@ -574,14 +574,14 @@ if not all_df.empty:
 
     total_chart = (
         alt.Chart(trend_df)
-        .mark_line(color="#4b5563", strokeWidth=2.5, strokeDash=[6, 4])
+        .mark_line(color="#9ca3af", strokeWidth=2.5, strokeDash=[6, 4])
         .encode(
             x=alt.X("spend_date:T", title="Date"),
             y=alt.Y("total:Q", title="Total ($)"),
             tooltip=["spend_date:T", alt.Tooltip("total:Q", format=",.2f")],
         )
         .properties(height=280)
-        .configure_view(fill="#ffffff", stroke="#111111")
+        .configure_view(fill="#ffffff", stroke="#e5e7eb")
     )
     st.altair_chart(total_chart, use_container_width=True)
 else:
