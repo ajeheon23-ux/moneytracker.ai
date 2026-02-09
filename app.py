@@ -255,6 +255,12 @@ def pick_best_item(catalog: list[dict], budget: float) -> dict:
     return sorted_items[0]
 
 
+def purchasable_quantity(amount: float, unit_price: float) -> int:
+    if unit_price <= 0:
+        return 0
+    return int(amount // unit_price)
+
+
 def get_rich_quote(openai_api_key: str, model_name: str, today_total: float, projected_year: float, feedback: str):
     if not openai_api_key:
         return None, "Enter OpenAI API key to generate a rich-mindset quote."
@@ -667,6 +673,7 @@ with right:
     monthly_if_repeat = live_total * 30
     macbook = pick_best_item(MACBOOK_CATALOG, monthly_if_repeat)
     iphone = pick_best_item(IPHONE_CATALOG, monthly_if_repeat)
+    iphone_qty = purchasable_quantity(monthly_if_repeat, float(iphone["price"]))
 
     st.subheader("Monthly Perspective")
     monthly_text, monthly_img = st.columns([1.7, 1], gap="small")
@@ -680,6 +687,7 @@ with right:
         st.write(f"Brand: {iphone['brand']}")
         st.write(f"Model: {iphone['model']}")
         st.write(f"Model Price: ${iphone['price']:,.2f}")
+        st.write(f"Quantity (max units): {iphone_qty}")
     with monthly_img:
         st.markdown("<div class='image-box'>", unsafe_allow_html=True)
         st.image(product_image_url(macbook["brand"], macbook["model"], "macbook"), use_container_width=True)
