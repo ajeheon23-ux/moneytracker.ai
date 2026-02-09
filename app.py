@@ -11,10 +11,10 @@ import streamlit as st
 DB_PATH = "spending_data.db"
 CATEGORY_ORDER = ["food", "shopping", "leisure", "other"]
 CATEGORY_CONFIG = {
-    "food": {"label": "Food/Beverage", "color": "#111111"},
-    "shopping": {"label": "Shopping", "color": "#2f2f2f"},
-    "leisure": {"label": "Hobbies", "color": "#555555"},
-    "other": {"label": "Etc (Travel)", "color": "#7a7a7a"},
+    "food": {"label": "Food/Beverage", "color": "#d1d5db"},
+    "shopping": {"label": "Shopping", "color": "#e5e7eb"},
+    "leisure": {"label": "Hobbies", "color": "#cbd5e1"},
+    "other": {"label": "Etc (Travel)", "color": "#f3f4f6"},
 }
 
 CAR_CATALOG = [
@@ -289,6 +289,17 @@ Rules:
         return None, f"OpenAI request failed: {e}"
 
 
+def product_image_url(brand: str, model: str, product_type: str) -> str:
+    safe_model = model.replace(" ", "+")
+    if product_type == "car":
+        return f"https://dummyimage.com/300x180/ffffff/111111.png&text={brand}+{safe_model}"
+    if product_type == "macbook":
+        return f"https://dummyimage.com/300x180/ffffff/111111.png&text={safe_model}"
+    if product_type == "iphone":
+        return f"https://dummyimage.com/300x180/ffffff/111111.png&text={safe_model}"
+    return "https://dummyimage.com/300x180/ffffff/111111.png&text=Product"
+
+
 def render_calendar(year: int, month: int, month_map: dict) -> None:
     cal = calendar.Calendar(firstweekday=6)
     weeks = cal.monthdayscalendar(year, month)
@@ -337,19 +348,18 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
     )
     long_df["category"] = long_df["category"].map(lambda x: CATEGORY_CONFIG[x]["label"])
 
-    color_domain = [CATEGORY_CONFIG[c]["label"] for c in CATEGORY_ORDER]
-    color_range = [CATEGORY_CONFIG[c]["color"] for c in CATEGORY_ORDER]
-
     return (
         alt.Chart(long_df)
-        .mark_line(strokeWidth=2)
+        .mark_line(strokeWidth=2, color="#111111", strokeDash=[6, 4])
         .encode(
             x=alt.X("spend_date:T", title="Date"),
             y=alt.Y("amount:Q", title="Amount ($)"),
-            color=alt.Color("category:N", scale=alt.Scale(domain=color_domain, range=color_range), title="Category"),
+            strokeDash=alt.StrokeDash("category:N", title="Category"),
+            detail="category:N",
             tooltip=["spend_date:T", "category:N", alt.Tooltip("amount:Q", format=",.2f")],
         )
         .properties(height=320)
+        .configure_view(fill="#ffffff", stroke="#111111")
     )
 
 
@@ -420,11 +430,11 @@ def apply_style() -> None:
         .calendar-wrap th {border:1px solid #111111; background:#f7f7f7; padding:7px; font-size:12px;}
         .calendar-wrap td {border:1px solid #111111; height:130px; vertical-align:top; padding:6px; background:#ffffff;}
         .day {font-weight:700; font-size:12px; margin-bottom:5px;}
-        .bar {padding:2px 6px; border-radius:3px; color:#ffffff; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;}
+        .bar {padding:2px 6px; border-radius:3px; color:#111111; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border:1px solid #111111;}
         .total {font-size:11px; color:#111111; margin-top:4px; font-weight:700;}
         .legend {display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 14px 0;}
-        .legend-item {padding:3px 8px; border-radius:3px; color:#ffffff; font-size:12px; font-weight:600;}
-        .section-box {border:1px solid #111111; padding:14px; background:#ffffff;}
+        .legend-item {padding:3px 8px; border-radius:3px; color:#111111; font-size:12px; font-weight:600; border:1px solid #111111;}
+        .image-box {border:1px solid #111111; padding:6px; background:#ffffff;}
         </style>
         """,
         unsafe_allow_html=True,
@@ -480,30 +490,39 @@ with right:
     annual_if_repeat = annualized_from_today(live_total)
     car = pick_best_item(CAR_CATALOG, annual_if_repeat)
 
-    st.markdown("<div class='section-box'>", unsafe_allow_html=True)
-    st.write("If this daily spending continues (365 days):")
-    st.write(f"Consumed Amount: ${annual_if_repeat:,.2f}")
-    st.write(f"Brand: {car['brand']}")
-    st.write(f"Model: {car['model']}")
-    st.write(f"Model Price: ${car['price']:,.2f}")
-    st.markdown("</div>", unsafe_allow_html=True)
+    annual_text, annual_img = st.columns([1.7, 1], gap="small")
+    with annual_text:
+        st.write("If this daily spending continues (365 days):")
+        st.write(f"Consumed Amount: ${annual_if_repeat:,.2f}")
+        st.write(f"Brand: {car['brand']}")
+        st.write(f"Model: {car['model']}")
+        st.write(f"Model Price: ${car['price']:,.2f}")
+    with annual_img:
+        st.markdown("<div class='image-box'>", unsafe_allow_html=True)
+        st.image(product_image_url(car["brand"], car["model"], "car"), use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     monthly_if_repeat = live_total * 30
     macbook = pick_best_item(MACBOOK_CATALOG, monthly_if_repeat)
     iphone = pick_best_item(IPHONE_CATALOG, monthly_if_repeat)
 
     st.subheader("Monthly Perspective")
-    st.markdown("<div class='section-box'>", unsafe_allow_html=True)
-    st.write("If this daily spending continues (30 days):")
-    st.write(f"Consumed Amount: ${monthly_if_repeat:,.2f}")
-    st.write(f"Brand: {macbook['brand']}")
-    st.write(f"Model: {macbook['model']}")
-    st.write(f"Model Price: ${macbook['price']:,.2f}")
-    st.write("---")
-    st.write(f"Brand: {iphone['brand']}")
-    st.write(f"Model: {iphone['model']}")
-    st.write(f"Model Price: ${iphone['price']:,.2f}")
-    st.markdown("</div>", unsafe_allow_html=True)
+    monthly_text, monthly_img = st.columns([1.7, 1], gap="small")
+    with monthly_text:
+        st.write("If this daily spending continues (30 days):")
+        st.write(f"Consumed Amount: ${monthly_if_repeat:,.2f}")
+        st.write(f"Brand: {macbook['brand']}")
+        st.write(f"Model: {macbook['model']}")
+        st.write(f"Model Price: ${macbook['price']:,.2f}")
+        st.write("---")
+        st.write(f"Brand: {iphone['brand']}")
+        st.write(f"Model: {iphone['model']}")
+        st.write(f"Model Price: ${iphone['price']:,.2f}")
+    with monthly_img:
+        st.markdown("<div class='image-box'>", unsafe_allow_html=True)
+        st.image(product_image_url(macbook["brand"], macbook["model"], "macbook"), use_container_width=True)
+        st.image(product_image_url(iphone["brand"], iphone["model"], "iphone"), use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 all_df = load_all_data()
 comparison = calculate_comparison(all_df, selected_date)
@@ -551,13 +570,14 @@ if not all_df.empty:
 
     total_chart = (
         alt.Chart(trend_df)
-        .mark_line(color="#111111", strokeWidth=2.5)
+        .mark_line(color="#111111", strokeWidth=2.5, strokeDash=[6, 4])
         .encode(
             x=alt.X("spend_date:T", title="Date"),
             y=alt.Y("total:Q", title="Total ($)"),
             tooltip=["spend_date:T", alt.Tooltip("total:Q", format=",.2f")],
         )
         .properties(height=280)
+        .configure_view(fill="#ffffff", stroke="#111111")
     )
     st.altair_chart(total_chart, use_container_width=True)
 else:
