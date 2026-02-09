@@ -11,10 +11,10 @@ import streamlit as st
 DB_PATH = "spending_data.db"
 CATEGORY_ORDER = ["food", "shopping", "leisure", "other"]
 CATEGORY_CONFIG = {
-    "food": {"label": "Food/Beverage", "color": "#d1d5db"},
-    "shopping": {"label": "Shopping", "color": "#e5e7eb"},
-    "leisure": {"label": "Hobbies", "color": "#cbd5e1"},
-    "other": {"label": "Etc (Travel)", "color": "#f3f4f6"},
+    "food": {"label": "Food/Beverage", "color": "#4b5563"},
+    "shopping": {"label": "Shopping", "color": "#6b7280"},
+    "leisure": {"label": "Hobbies", "color": "#9ca3af"},
+    "other": {"label": "Etc (Travel)", "color": "#374151"},
 }
 
 CAR_CATALOG = [
@@ -324,7 +324,7 @@ def render_calendar(year: int, month: int, month_map: dict) -> None:
                     value = rec.get(cat, 0.0)
                     if value > 0:
                         bars.append(
-                            f"<div class='bar' style='background:{CATEGORY_CONFIG[cat]['color']}'>{CATEGORY_CONFIG[cat]['label']}: ${value:,.0f}</div>"
+                            f"<div class='bar' style='border-color:{CATEGORY_CONFIG[cat]['color']}'>{CATEGORY_CONFIG[cat]['label']}: ${value:,.0f}</div>"
                         )
                 bars_html = "".join(bars)
                 html.append(
@@ -350,7 +350,7 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
 
     return (
         alt.Chart(long_df)
-        .mark_line(strokeWidth=2, color="#111111", strokeDash=[6, 4])
+        .mark_line(strokeWidth=2, color="#4b5563", strokeDash=[6, 4])
         .encode(
             x=alt.X("spend_date:T", title="Date"),
             y=alt.Y("amount:Q", title="Amount ($)"),
@@ -389,7 +389,11 @@ def apply_style() -> None:
         }
         .stNumberInput input, .stDateInput input, .stTextInput input {
             color: #111111 !important;
-            background: #ffffff !important;
+            background: transparent !important;
+            border: 1px solid #111111 !important;
+        }
+        .stSelectbox div[data-baseweb="select"] > div {
+            background: transparent !important;
             border: 1px solid #111111 !important;
         }
         .stButton > button,
@@ -430,10 +434,10 @@ def apply_style() -> None:
         .calendar-wrap th {border:1px solid #111111; background:#f7f7f7; padding:7px; font-size:12px;}
         .calendar-wrap td {border:1px solid #111111; height:130px; vertical-align:top; padding:6px; background:#ffffff;}
         .day {font-weight:700; font-size:12px; margin-bottom:5px;}
-        .bar {padding:2px 6px; border-radius:3px; color:#111111; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border:1px solid #111111;}
+        .bar {padding:2px 6px; border-radius:3px; color:#111111; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border:1px solid #111111; background:transparent !important;}
         .total {font-size:11px; color:#111111; margin-top:4px; font-weight:700;}
         .legend {display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 14px 0;}
-        .legend-item {padding:3px 8px; border-radius:3px; color:#111111; font-size:12px; font-weight:600; border:1px solid #111111;}
+        .legend-item {padding:3px 8px; border-radius:3px; color:#111111; font-size:12px; font-weight:600; border:1px solid #111111; background:transparent !important;}
         .image-box {border:1px solid #111111; padding:6px; background:#ffffff;}
         </style>
         """,
@@ -570,7 +574,7 @@ if not all_df.empty:
 
     total_chart = (
         alt.Chart(trend_df)
-        .mark_line(color="#111111", strokeWidth=2.5, strokeDash=[6, 4])
+        .mark_line(color="#4b5563", strokeWidth=2.5, strokeDash=[6, 4])
         .encode(
             x=alt.X("spend_date:T", title="Date"),
             y=alt.Y("total:Q", title="Total ($)"),
@@ -593,7 +597,7 @@ with m_col:
 legend_html = ["<div class='legend'>"]
 for cat in CATEGORY_ORDER:
     cfg = CATEGORY_CONFIG[cat]
-    legend_html.append(f"<span class='legend-item' style='background:{cfg['color']}'>{cfg['label']}</span>")
+    legend_html.append(f"<span class='legend-item' style='border-color:{cfg['color']}'>{cfg['label']}</span>")
 legend_html.append("</div>")
 st.markdown("".join(legend_html), unsafe_allow_html=True)
 
