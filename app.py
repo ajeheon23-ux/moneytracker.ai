@@ -360,8 +360,8 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
             color=alt.Color("category:N", scale=alt.Scale(domain=color_domain, range=color_range), title="Category"),
             tooltip=["spend_date:T", "category:N", alt.Tooltip("amount:Q", format=",.2f")],
         )
-        .properties(height=320)
-        .configure_view(fill="transparent", stroke="transparent")
+        .properties(height=320, background="#ffffff")
+        .configure_view(fill="#ffffff", stroke="#e5e7eb")
         .configure_axis(domainColor="#9ca3af", tickColor="#9ca3af", labelColor="#111111", titleColor="#111111")
         .configure_legend(labelColor="#111111", titleColor="#111111")
     )
@@ -376,8 +376,8 @@ def total_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
             y=alt.Y("total:Q", title="Total ($)", axis=alt.Axis(grid=False)),
             tooltip=["spend_date:T", alt.Tooltip("total:Q", format=",.2f")],
         )
-        .properties(height=280)
-        .configure_view(fill="transparent", stroke="transparent")
+        .properties(height=280, background="#ffffff")
+        .configure_view(fill="#ffffff", stroke="#e5e7eb")
         .configure_axis(domainColor="#9ca3af", tickColor="#9ca3af", labelColor="#111111", titleColor="#111111")
     )
 
