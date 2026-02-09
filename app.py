@@ -64,6 +64,15 @@ def init_db() -> None:
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS monthly_targets (
+            year_month TEXT PRIMARY KEY,
+            target_amount REAL DEFAULT 0,
+            updated_at TEXT
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -167,6 +176,78 @@ def get_month_map(year: int, month: int) -> dict:
             "total": float(row[5] or 0),
         }
     return month_data
+
+
+def get_month_target(year: int, month: int) -> float:
+    ym = f"{year:04d}-{month:02d}"
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT target_amount
+        FROM monthly_targets
+        WHERE year_month = ?
+        """,
+        (ym,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+
+
+def upsert_month_target(year: int, month: int, target_amount: float) -> None:
+    ym = f"{year:04d}-{month:02d}"
+    now = datetime.now().isoformat(timespec="seconds")
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO monthly_targets (year_month, target_amount, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(year_month) DO UPDATE SET
+            target_amount=excluded.target_amount,
+            updated_at=excluded.updated_at
+        """,
+        (ym, target_amount, now),
+    )
+    conn.commit()
+    conn.close()
+
+
+def calculate_range_allowance(
+    year: int,
+    month: int,
+    month_map: dict,
+    target_amount: float,
+    start_day: int,
+    end_day: int,
+) -> dict:
+    if end_day < start_day:
+        start_day, end_day = end_day, start_day
+
+    selected_dates = [f"{year:04d}-{month:02d}-{d:02d}" for d in range(start_day, end_day + 1)]
+    range_days = len(selected_dates)
+    spent_sum = sum(float((month_map.get(d) or {}).get("total", 0.0)) for d in selected_dates)
+    empty_dates = [d for d in selected_dates if d not in month_map]
+
+    denominator = range_days - 1
+    if denominator <= 0:
+        allowance_raw = 0.0
+    else:
+        allowance_raw = (target_amount - spent_sum) / denominator
+
+    allowance_capped = max(0.0, allowance_raw)
+    return {
+        "start_day": start_day,
+        "end_day": end_day,
+        "selected_dates": selected_dates,
+        "spent_sum": spent_sum,
+        "range_days": range_days,
+        "denominator": denominator,
+        "empty_dates": empty_dates,
+        "allowance_raw": allowance_raw,
+        "allowance_capped": allowance_capped,
+    }
 
 
 @dataclass
@@ -295,7 +376,13 @@ Rules:
         return None, f"OpenAI request failed: {e}"
 
 
-def render_calendar(year: int, month: int, month_map: dict) -> None:
+def render_calendar(
+    year: int,
+    month: int,
+    month_map: dict,
+    selected_dates: set[str] | None = None,
+    allowance_for_empty: float | None = None,
+) -> None:
     cal = calendar.Calendar(firstweekday=6)
     weeks = cal.monthdayscalendar(year, month)
     weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -313,6 +400,9 @@ def render_calendar(year: int, month: int, month_map: dict) -> None:
                 continue
             key = f"{year:04d}-{month:02d}-{day_num:02d}"
             rec = month_map.get(key)
+            in_range = bool(selected_dates and key in selected_dates)
+            td_class = " selected-cell" if in_range else ""
+
             if rec:
                 bars = []
                 for cat in CATEGORY_ORDER:
@@ -323,10 +413,13 @@ def render_calendar(year: int, month: int, month_map: dict) -> None:
                         )
                 bars_html = "".join(bars)
                 html.append(
-                    f"<td><div class='day'>{day_num}</div>{bars_html}<div class='total'>Total: ${rec.get('total', 0):,.0f}</div></td>"
+                    f"<td class='{td_class.strip()}'><div class='day'>{day_num}</div>{bars_html}<div class='total'>Total: ${rec.get('total', 0):,.0f}</div></td>"
                 )
             else:
-                html.append(f"<td><div class='day'>{day_num}</div></td>")
+                allowance_html = ""
+                if in_range and allowance_for_empty is not None:
+                    allowance_html = f"<div class='allowance'>Allowance: ${allowance_for_empty:,.2f}</div>"
+                html.append(f"<td class='{td_class.strip()}'><div class='day'>{day_num}</div>{allowance_html}</td>")
         html.append("</tr>")
     html.append("</tbody></table></div>")
     st.markdown("".join(html), unsafe_allow_html=True)
@@ -540,8 +633,10 @@ def apply_style() -> None:
         .calendar-wrap table {width:100%; border-collapse:collapse; table-layout:fixed;}
         .calendar-wrap th {border:1px solid #e5e7eb; background:#fafafa; padding:7px; font-size:12px;}
         .calendar-wrap td {border:1px solid #e5e7eb; height:130px; vertical-align:top; padding:6px; background:#ffffff;}
+        .calendar-wrap td.selected-cell {background:#f8fafc;}
         .day {font-weight:700; font-size:12px; margin-bottom:5px;}
         .bar {padding:2px 6px; border-radius:3px; color:#111111; font-size:10px; margin-bottom:4px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border:1px solid #d1d5db; background:transparent;}
+        .allowance {margin-top:8px; font-size:11px; color:#111111; border:1px dashed #cbd5e1; padding:3px 5px; background:#ffffff;}
         .total {font-size:11px; color:#111111; margin-top:4px; font-weight:700;}
         .legend {display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 14px 0;}
         .legend-item {padding:3px 8px; border-radius:3px; color:#111111; font-size:12px; font-weight:600; border:1px solid #d1d5db; background:transparent !important;}
@@ -691,6 +786,22 @@ with y_col:
 with m_col:
     month = st.selectbox("Month", options=list(range(1, 13)), index=date.today().month - 1)
 
+target_default = get_month_target(year, month)
+target_col, target_btn_col = st.columns([3, 1])
+with target_col:
+    monthly_target = st.number_input(
+        "Target Monthly Spending ($)",
+        min_value=0.0,
+        step=100.0,
+        format="%.2f",
+        value=float(target_default),
+        key=f"target_{year}_{month}",
+    )
+with target_btn_col:
+    if st.button("Save Target", key=f"save_target_{year}_{month}"):
+        upsert_month_target(year, month, float(monthly_target))
+        st.success("Monthly target saved.")
+
 legend_html = ["<div class='legend'>"]
 for cat in CATEGORY_ORDER:
     cfg = CATEGORY_CONFIG[cat]
@@ -699,7 +810,53 @@ legend_html.append("</div>")
 st.markdown("".join(legend_html), unsafe_allow_html=True)
 
 month_map = get_month_map(year, month)
-render_calendar(year, month, month_map)
+days_in_month = calendar.monthrange(year, month)[1]
+r1, r2 = st.columns(2)
+with r1:
+    range_start_day = st.selectbox(
+        "Range Start Day",
+        options=list(range(1, days_in_month + 1)),
+        index=0,
+        key=f"range_start_{year}_{month}",
+    )
+with r2:
+    range_end_day = st.selectbox(
+        "Range End Day",
+        options=list(range(1, days_in_month + 1)),
+        index=days_in_month - 1,
+        key=f"range_end_{year}_{month}",
+    )
+
+allowance_result = calculate_range_allowance(
+    year=year,
+    month=month,
+    month_map=month_map,
+    target_amount=float(monthly_target),
+    start_day=int(range_start_day),
+    end_day=int(range_end_day),
+)
+
+selected_dates_set = set(allowance_result["selected_dates"])
+render_calendar(
+    year,
+    month,
+    month_map,
+    selected_dates=selected_dates_set,
+    allowance_for_empty=allowance_result["allowance_capped"],
+)
+
+st.caption(
+    f"Formula: (Target ${monthly_target:,.2f} - Spent in selected range ${allowance_result['spent_sum']:,.2f}) "
+    f"/ (Selected days {allowance_result['range_days']} - 1) = ${allowance_result['allowance_capped']:,.2f}"
+)
+st.write(f"Selected range: {allowance_result['start_day']} to {allowance_result['end_day']}")
+st.write(f"Spent in selected range: ${allowance_result['spent_sum']:,.2f}")
+st.write(f"Empty days in selected range: {len(allowance_result['empty_dates'])}")
+
+if allowance_result["allowance_raw"] < 0:
+    st.warning("Selected range has already exceeded the monthly target. Allowance for empty cells is capped at $0.00.")
+elif allowance_result["denominator"] <= 0:
+    st.info("Select at least 2 days to calculate per-day allowance.")
 
 with st.expander("Run"):
     st.code(
