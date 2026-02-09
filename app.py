@@ -366,16 +366,51 @@ def apply_style() -> None:
             font-family: Georgia, "Times New Roman", serif;
             color: #111111;
         }
+        p, span, label, div, input, textarea {
+            color: #111111 !important;
+        }
+        [data-testid="stMetricLabel"] p,
+        [data-testid="stMetricValue"] div,
+        [data-testid="stMetricDelta"] div {
+            color: #111111 !important;
+        }
+        [data-testid="stMarkdownContainer"] * {
+            color: #111111 !important;
+        }
+        .stNumberInput input, .stDateInput input, .stTextInput input {
+            color: #111111 !important;
+            background: #ffffff !important;
+            border: 1px solid #111111 !important;
+        }
+        .stButton > button,
+        .stDownloadButton > button {
+            color: #111111 !important;
+            background: #f3f4f6 !important;
+            border: 1px solid #111111 !important;
+            border-radius: 4px !important;
+        }
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {
+            background: #e5e7eb !important;
+            border-color: #111111 !important;
+        }
+        .stButton > button[kind="primary"] {
+            background: #e5e7eb !important;
+            color: #111111 !important;
+            border: 1px solid #111111 !important;
+        }
         .hero {
             border: 1px solid #111111;
             background: #ffffff;
             padding: 20px;
             margin-bottom: 16px;
+            text-align: center;
         }
         .hero-title {
-            font-size: 1.6rem;
+            font-size: 2.0rem;
             font-weight: 700;
             margin-bottom: 6px;
+            letter-spacing: 0.02em;
         }
         .hero-sub {
             font-size: 0.95rem;
@@ -408,7 +443,7 @@ apply_style()
 st.markdown(
     """
     <div class='hero'>
-      <div class='hero-title'>Money Tracker AI</div>
+      <div class='hero-title'>MONEY TRACKER AI</div>
       <div class='hero-sub'>Record spending, analyze patterns, project outcomes, and enforce disciplined budgeting.</div>
     </div>
     """,
@@ -443,14 +478,14 @@ with left:
 with right:
     st.subheader("Annualized Perspective")
     annual_if_repeat = annualized_from_today(live_total)
-    st.metric("If Today Repeats for 365 Days", f"${annual_if_repeat:,.2f}")
-
     car = pick_best_item(CAR_CATALOG, annual_if_repeat)
+
     st.markdown("<div class='section-box'>", unsafe_allow_html=True)
-    st.write("Reference car at this annualized burn rate")
+    st.write("If this daily spending continues (365 days):")
+    st.write(f"Consumed Amount: ${annual_if_repeat:,.2f}")
     st.write(f"Brand: {car['brand']}")
     st.write(f"Model: {car['model']}")
-    st.write(f"Price: ${car['price']:,.2f}")
+    st.write(f"Model Price: ${car['price']:,.2f}")
     st.markdown("</div>", unsafe_allow_html=True)
 
     monthly_if_repeat = live_total * 30
@@ -458,11 +493,16 @@ with right:
     iphone = pick_best_item(IPHONE_CATALOG, monthly_if_repeat)
 
     st.subheader("Monthly Perspective")
-    st.metric("If Today Repeats for 30 Days", f"${monthly_if_repeat:,.2f}")
     st.markdown("<div class='section-box'>", unsafe_allow_html=True)
-    st.write("Possible Apple purchases with this monthly amount")
-    st.write(f"MacBook: {macbook['model']} (${macbook['price']:,.2f})")
-    st.write(f"iPhone: {iphone['model']} (${iphone['price']:,.2f})")
+    st.write("If this daily spending continues (30 days):")
+    st.write(f"Consumed Amount: ${monthly_if_repeat:,.2f}")
+    st.write(f"Brand: {macbook['brand']}")
+    st.write(f"Model: {macbook['model']}")
+    st.write(f"Model Price: ${macbook['price']:,.2f}")
+    st.write("---")
+    st.write(f"Brand: {iphone['brand']}")
+    st.write(f"Model: {iphone['model']}")
+    st.write(f"Model Price: ${iphone['price']:,.2f}")
     st.markdown("</div>", unsafe_allow_html=True)
 
 all_df = load_all_data()
