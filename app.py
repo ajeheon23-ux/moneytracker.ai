@@ -349,7 +349,7 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
     long_df["category"] = long_df["category"].map(lambda x: CATEGORY_CONFIG[x]["label"])
 
     color_domain = [CATEGORY_CONFIG[c]["label"] for c in CATEGORY_ORDER]
-    color_range = ["#111111", "#4b5563", "#6b7280", "#9ca3af"]
+    color_range = ["#2563eb", "#dc2626", "#16a34a", "#d97706"]
 
     return (
         alt.Chart(long_df)
@@ -368,18 +368,53 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
 
 
 def total_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
+    if df.empty:
+        return alt.Chart(pd.DataFrame({"spend_date": [], "cumulative_total": []}))
+    df = df.sort_values("spend_date").copy()
+    df["cumulative_total"] = df["total"].cumsum()
     return (
         alt.Chart(df)
-        .mark_line(color="#374151", strokeWidth=2.4, point=alt.OverlayMarkDef(filled=True, size=56))
+        .mark_line(color="#111111", strokeWidth=2.6, point=alt.OverlayMarkDef(filled=True, size=48))
         .encode(
             x=alt.X("spend_date:T", title="Date", axis=alt.Axis(grid=False)),
-            y=alt.Y("total:Q", title="Total ($)", axis=alt.Axis(grid=False)),
-            tooltip=["spend_date:T", alt.Tooltip("total:Q", format=",.2f")],
+            y=alt.Y("cumulative_total:Q", title="Cumulative Total ($)", axis=alt.Axis(grid=False)),
+            tooltip=["spend_date:T", alt.Tooltip("cumulative_total:Q", format=",.2f")],
         )
         .properties(height=280, background="#ffffff")
         .configure_view(fill="#ffffff", stroke="#e5e7eb")
         .configure_axis(domainColor="#9ca3af", tickColor="#9ca3af", labelColor="#111111", titleColor="#111111")
     )
+
+
+def date_selector(default_date: date) -> date:
+    if "selected_year" not in st.session_state:
+        st.session_state.selected_year = default_date.year
+    if "selected_month" not in st.session_state:
+        st.session_state.selected_month = default_date.month
+    if "selected_day" not in st.session_state:
+        st.session_state.selected_day = default_date.day
+
+    today = date.today()
+    years = list(range(today.year - 3, today.year + 1))
+    if st.session_state.selected_year not in years:
+        st.session_state.selected_year = today.year
+
+    col_y, col_m, col_d = st.columns(3)
+    with col_y:
+        year = st.selectbox("Year", options=years, index=years.index(st.session_state.selected_year), key="selected_year")
+    with col_m:
+        month = st.selectbox("Month", options=list(range(1, 13)), index=st.session_state.selected_month - 1, key="selected_month")
+
+    max_day = calendar.monthrange(year, month)[1]
+    if st.session_state.selected_day > max_day:
+        st.session_state.selected_day = max_day
+
+    day_options = list(range(1, max_day + 1))
+    with col_d:
+        day = st.selectbox("Day", options=day_options, index=day_options.index(st.session_state.selected_day), key="selected_day")
+
+    selected = date(year, month, day)
+    return selected if selected <= today else today
 
 
 def apply_style() -> None:
@@ -517,7 +552,8 @@ with st.sidebar:
     openai_api_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
     model_name = st.text_input("Model", value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
 
-selected_date = st.date_input("Date", value=date.today(), max_value=date.today())
+st.subheader("Date")
+selected_date = date_selector(date.today())
 selected_iso = selected_date.isoformat()
 existing = get_spending_by_date(selected_iso) or {"food": 0.0, "shopping": 0.0, "leisure": 0.0, "other": 0.0}
 
@@ -617,9 +653,15 @@ with quote_col:
 st.subheader("Category Trends")
 if not all_df.empty:
     trend_df = all_df.sort_values("spend_date").copy()
-    category_chart = category_timeseries_chart(trend_df)
+    latest_day = trend_df["spend_date"].max()
+    cutoff = latest_day - pd.Timedelta(days=29)
+    recent_30_df = trend_df[trend_df["spend_date"] >= cutoff].copy()
+
+    st.caption("Category trend in the most recent 30 days")
+    category_chart = category_timeseries_chart(recent_30_df)
     st.altair_chart(category_chart, use_container_width=True)
 
+    st.caption("Total spending tracking (cumulative)")
     total_chart = total_timeseries_chart(trend_df)
     st.altair_chart(total_chart, use_container_width=True)
 else:
