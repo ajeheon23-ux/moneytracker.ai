@@ -6,7 +6,6 @@ from datetime import date, datetime
 
 import altair as alt
 import pandas as pd
-import requests
 import streamlit as st
 
 DB_PATH = "spending_data.db"
@@ -296,140 +295,6 @@ Rules:
         return None, f"OpenAI request failed: {e}"
 
 
-def product_search_query(brand: str, model: str, product_type: str) -> str:
-    if product_type == "macbook":
-        if "Air" in model:
-            return "Apple MacBook Air"
-        return "Apple MacBook Pro"
-    if product_type == "iphone":
-        model_base = model.split("(")[0].strip()
-        return f"Apple {model_base}"
-    return f"{brand} {model}"
-
-
-@st.cache_data(ttl=86400)
-def fetch_wikipedia_image(search_query: str) -> str | None:
-    """Find product photo from Wikipedia and return thumbnail URL."""
-    try:
-        search_resp = requests.get(
-            "https://en.wikipedia.org/w/api.php",
-            params={
-                "action": "query",
-                "list": "search",
-                "srsearch": search_query,
-                "srlimit": 1,
-                "format": "json",
-            },
-            timeout=8,
-        )
-        if search_resp.status_code != 200:
-            return None
-        search_data = search_resp.json()
-        hits = ((search_data.get("query") or {}).get("search") or [])
-        if not hits:
-            return None
-        pageid = hits[0].get("pageid")
-        if not pageid:
-            return None
-
-        image_resp = requests.get(
-            "https://en.wikipedia.org/w/api.php",
-            params={
-                "action": "query",
-                "prop": "pageimages",
-                "pageids": pageid,
-                "pithumbsize": 900,
-                "format": "json",
-            },
-            timeout=8,
-        )
-        if image_resp.status_code != 200:
-            return None
-        image_data = image_resp.json()
-        page = ((image_data.get("query") or {}).get("pages") or {}).get(str(pageid), {})
-        thumb = (page.get("thumbnail") or {}).get("source")
-        return thumb
-    except Exception:
-        return None
-
-
-@st.cache_data(ttl=86400)
-def fetch_serpapi_image(search_query: str, serpapi_key: str) -> str | None:
-    try:
-        if not serpapi_key:
-            return None
-        resp = requests.get(
-            "https://serpapi.com/search.json",
-            params={
-                "engine": "google_images",
-                "q": search_query,
-                "api_key": serpapi_key,
-                "num": 1,
-            },
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        imgs = data.get("images_results") or []
-        if not imgs:
-            return None
-        return imgs[0].get("original") or imgs[0].get("thumbnail")
-    except Exception:
-        return None
-
-
-@st.cache_data(ttl=86400)
-def fetch_bing_image(search_query: str, bing_api_key: str) -> str | None:
-    try:
-        if not bing_api_key:
-            return None
-        resp = requests.get(
-            "https://api.bing.microsoft.com/v7.0/images/search",
-            headers={"Ocp-Apim-Subscription-Key": bing_api_key},
-            params={"q": search_query, "count": 1, "safeSearch": "Strict"},
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        values = data.get("value") or []
-        if not values:
-            return None
-        return values[0].get("contentUrl") or values[0].get("thumbnailUrl")
-    except Exception:
-        return None
-
-
-def product_image_url(
-    brand: str,
-    model: str,
-    product_type: str,
-    image_provider: str,
-    serpapi_key: str,
-    bing_api_key: str,
-) -> str:
-    query = product_search_query(brand, model, product_type)
-    real_url = None
-    if image_provider == "SerpAPI":
-        real_url = fetch_serpapi_image(query, serpapi_key)
-    elif image_provider == "Bing Image Search":
-        real_url = fetch_bing_image(query, bing_api_key)
-    elif image_provider == "Auto":
-        real_url = (
-            fetch_serpapi_image(query, serpapi_key)
-            or fetch_bing_image(query, bing_api_key)
-        )
-
-    if not real_url:
-        real_url = fetch_wikipedia_image(query)
-    if real_url:
-        return real_url
-    # Fallback image when external image lookup fails.
-    safe_model = model.replace(" ", "+")
-    return f"https://dummyimage.com/300x180/ffffff/111111.png&text={brand}+{safe_model}"
-
-
 def render_calendar(year: int, month: int, month_map: dict) -> None:
     cal = calendar.Calendar(firstweekday=6)
     weeks = cal.monthdayscalendar(year, month)
@@ -477,6 +342,7 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
         value_name="amount",
     )
     long_df["category"] = long_df["category"].map(lambda x: CATEGORY_CONFIG[x]["label"])
+    long_df["amount_log"] = long_df["amount"].clip(lower=1)
 
     color_domain = [CATEGORY_CONFIG[c]["label"] for c in CATEGORY_ORDER]
     color_range = ["#2563eb", "#dc2626", "#16a34a", "#d97706"]
@@ -486,7 +352,12 @@ def category_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
         .mark_line(point=alt.OverlayMarkDef(filled=True, size=52), strokeWidth=2.2)
         .encode(
             x=alt.X("yearmonthdate(spend_date):T", title="Date", axis=alt.Axis(grid=False, format="%m-%d")),
-            y=alt.Y("amount:Q", title="Amount ($)", axis=alt.Axis(grid=False)),
+            y=alt.Y(
+                "amount_log:Q",
+                title="Amount ($, log scale)",
+                axis=alt.Axis(grid=False),
+                scale=alt.Scale(type="log"),
+            ),
             color=alt.Color("category:N", scale=alt.Scale(domain=color_domain, range=color_range), title="Category"),
             tooltip=[alt.Tooltip("yearmonthdate(spend_date):T", title="Date"), "category:N", alt.Tooltip("amount:Q", format=",.2f")],
         )
@@ -502,12 +373,18 @@ def total_timeseries_chart(df: pd.DataFrame) -> alt.Chart:
         return alt.Chart(pd.DataFrame({"spend_date": [], "cumulative_total": []}))
     df = df.sort_values("spend_date").copy()
     df["cumulative_total"] = df["total"].cumsum()
+    df["cumulative_total_log"] = df["cumulative_total"].clip(lower=1)
     return (
         alt.Chart(df)
         .mark_line(color="#111111", strokeWidth=2.6, point=alt.OverlayMarkDef(filled=True, size=48))
         .encode(
             x=alt.X("yearmonthdate(spend_date):T", title="Date", axis=alt.Axis(grid=False, format="%m-%d")),
-            y=alt.Y("cumulative_total:Q", title="Cumulative Total ($)", axis=alt.Axis(grid=False)),
+            y=alt.Y(
+                "cumulative_total_log:Q",
+                title="Cumulative Total ($, log scale)",
+                axis=alt.Axis(grid=False),
+                scale=alt.Scale(type="log"),
+            ),
             tooltip=[alt.Tooltip("yearmonthdate(spend_date):T", title="Date"), alt.Tooltip("cumulative_total:Q", format=",.2f")],
         )
         .properties(height=280, background="#ffffff")
@@ -698,14 +575,6 @@ with st.sidebar:
     st.subheader("AI Settings")
     openai_api_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
     model_name = st.text_input("Model", value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
-    st.subheader("Image Settings")
-    image_provider = st.selectbox(
-        "Image Provider",
-        options=["Auto", "Wikipedia", "SerpAPI", "Bing Image Search"],
-        index=0,
-    )
-    serpapi_key = st.text_input("SERPAPI_KEY", type="password", value=os.getenv("SERPAPI_KEY", ""))
-    bing_api_key = st.text_input("BING_IMAGE_SEARCH_KEY", type="password", value=os.getenv("BING_IMAGE_SEARCH_KEY", ""))
 
 st.subheader("Date")
 selected_date = date_selector(date.today())
@@ -732,57 +601,33 @@ with right:
     st.subheader("Annualized Perspective")
     annual_if_repeat = annualized_from_today(live_total)
     car = pick_best_item(CAR_CATALOG, annual_if_repeat)
+    car_qty = purchasable_quantity(annual_if_repeat, float(car["price"]))
 
-    annual_text, annual_img = st.columns([1.7, 1], gap="small")
-    with annual_text:
-        st.write("If this daily spending continues (365 days):")
-        st.write(f"Consumed Amount: ${annual_if_repeat:,.2f}")
-        st.write(f"Brand: {car['brand']}")
-        st.write(f"Model: {car['model']}")
-        st.write(f"Model Price: ${car['price']:,.2f}")
-    with annual_img:
-        st.markdown("<div class='image-box'>", unsafe_allow_html=True)
-        st.image(
-            product_image_url(
-                car["brand"], car["model"], "car", image_provider, serpapi_key, bing_api_key
-            ),
-            use_container_width=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.write("If this daily spending continues (365 days):")
+    st.write(f"Consumed Amount: ${annual_if_repeat:,.2f}")
+    st.write(f"Brand: {car['brand']}")
+    st.write(f"Model: {car['model']}")
+    st.write(f"Model Price: ${car['price']:,.2f}")
+    st.write(f"Quantity (max units): {car_qty}")
 
     monthly_if_repeat = live_total * 30
     macbook = pick_best_item(MACBOOK_CATALOG, monthly_if_repeat)
     iphone = pick_best_item(IPHONE_CATALOG, monthly_if_repeat)
+    macbook_qty = purchasable_quantity(monthly_if_repeat, float(macbook["price"]))
     iphone_qty = purchasable_quantity(monthly_if_repeat, float(iphone["price"]))
 
     st.subheader("Monthly Perspective")
-    monthly_text, monthly_img = st.columns([1.7, 1], gap="small")
-    with monthly_text:
-        st.write("If this daily spending continues (30 days):")
-        st.write(f"Consumed Amount: ${monthly_if_repeat:,.2f}")
-        st.write(f"Brand: {macbook['brand']}")
-        st.write(f"Model: {macbook['model']}")
-        st.write(f"Model Price: ${macbook['price']:,.2f}")
-        st.write("---")
-        st.write(f"Brand: {iphone['brand']}")
-        st.write(f"Model: {iphone['model']}")
-        st.write(f"Model Price: ${iphone['price']:,.2f}")
-        st.write(f"Quantity (max units): {iphone_qty}")
-    with monthly_img:
-        st.markdown("<div class='image-box'>", unsafe_allow_html=True)
-        st.image(
-            product_image_url(
-                macbook["brand"], macbook["model"], "macbook", image_provider, serpapi_key, bing_api_key
-            ),
-            use_container_width=True,
-        )
-        st.image(
-            product_image_url(
-                iphone["brand"], iphone["model"], "iphone", image_provider, serpapi_key, bing_api_key
-            ),
-            use_container_width=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.write("If this daily spending continues (30 days):")
+    st.write(f"Consumed Amount: ${monthly_if_repeat:,.2f}")
+    st.write(f"Brand: {macbook['brand']}")
+    st.write(f"Model: {macbook['model']}")
+    st.write(f"Model Price: ${macbook['price']:,.2f}")
+    st.write(f"Quantity (max units): {macbook_qty}")
+    st.write("---")
+    st.write(f"Brand: {iphone['brand']}")
+    st.write(f"Model: {iphone['model']}")
+    st.write(f"Model Price: ${iphone['price']:,.2f}")
+    st.write(f"Quantity (max units): {iphone_qty}")
 
 all_df = load_all_data()
 comparison = calculate_comparison(all_df, selected_date)
@@ -860,8 +705,6 @@ with st.expander("Run"):
     st.code(
         "pip install -r requirements.txt\n"
         "export OPENAI_API_KEY='...'\n"
-        "export SERPAPI_KEY='...'\n"
-        "export BING_IMAGE_SEARCH_KEY='...'\n"
         "streamlit run app.py",
         language="bash",
     )
